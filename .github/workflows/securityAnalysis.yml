@@ -1,0 +1,93 @@
+name: .NET Security Analysis
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+  pull-requests: write
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+      pull-requests: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'csharp' ]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0'
+
+    # Initializes the CodeQL tools for scanning.
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: ${{ matrix.language }}
+        # If you wish to specify custom queries, you can do so here
+        # queries: security-extended,security-and-quality
+
+    # Autobuild attempts to build any compiled languages
+    - name: Autobuild
+      uses: github/codeql-action/autobuild@v3
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:${{matrix.language}}"
+
+    - name: Get CodeQL Analysis Results
+      if: github.event_name == 'pull_request'
+      id: get-results
+      uses: github/codeql-action/results@v3
+      with:
+        sort-by: severity
+        
+    - name: Create PR Comment
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const results = ${{ steps.get-results.outputs.results }};
+          const alerts = JSON.parse(results);
+          
+          let comment = '## 🔒 Security Analysis Results\n\n';
+          
+          if (alerts.length === 0) {
+            comment += '✅ No security issues found\n';
+          } else {
+            comment += `⚠️ Found ${alerts.length} security issue(s):\n\n`;
+            
+            alerts.forEach(alert => {
+              comment += `### ${alert.rule.name}\n`;
+              comment += `**Severity:** ${alert.rule.severity}\n`;
+              comment += `**Location:** ${alert.locations[0].physicalLocation.artifactLocation.uri}:${alert.locations[0].physicalLocation.region.startLine}\n`;
+              comment += `**Description:** ${alert.message.text}\n\n`;
+            });
+            
+            comment += '\nPlease review these security findings before merging.\n';
+          }
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
