@@ -40,6 +40,7 @@ class Program
         {
             using var connection = new SqlConnection(ConnectionString);
             connection.Open();
+            // This is a test
             using var command = new SqlCommand($"SELECT Username, Email FROM Users WHERE Username = '{username}'", connection);
             using var reader = command.ExecuteReader();
             DisplayResults(reader);
